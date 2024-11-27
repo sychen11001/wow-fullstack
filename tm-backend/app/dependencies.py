@@ -11,6 +11,12 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from app.core.models import users
 from .config import settings
+
+from fastapi.security import OAuth2PasswordBearer
+
+# 添加OAuth2方案
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/users/token")
+
 # 使用的算法是Bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -40,10 +46,11 @@ def verify_password(plain_password, hashed_password):
     """
     return pwd_context.verify(plain_password, hashed_password)
 
-def check_jwt_token(token: Optional[str] = Header(""), db: Session = Depends(get_db)):
+async def check_jwt_token(token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)):
     """
     验证token
-    :param token:
+    :param token: 从 OAuth2 授权中获取的 token
+    :param db: 数据库会话
     :return: 返回用户信息
     """
     try:

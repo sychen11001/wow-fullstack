@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc 
 from app.core.models.users import Base, Users, Register
 from app.database import engine
+from fastapi.security import OAuth2PasswordRequestForm
 
 Base.metadata.create_all(bind=engine)
 
@@ -70,13 +71,14 @@ def check_user(db: Session, phone, password):
 
 
 # 使用表单格式参数需要安装模块：python-multipart
-@router.post("/token", response_model=TokenModel)
-async def login_for_access_token(phone: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    user = check_user(db, phone, password)
+@router.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(),db: Session = Depends(get_db)):
+    user = check_user(db, form_data.username, form_data.password)  # 注意这里使用username字段作为手机号
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误"
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     # access过期时间
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -89,11 +91,15 @@ async def login_for_access_token(phone: str = Form(...), password: str = Form(..
     refresh_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=refresh_token_expires
     )
-    user.atoken = access_token
-    user.rtoken = refresh_token
     #rtn = await login_flask(user.id,user.username,user.phone,user.role)
     #print(rtn)
-    return user
+    # 修改返回格式,返回格式需符合 OAuth2 规范，即：包含 access_token 和 token_type
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": user
+    }
 
 @router.get("/refresh", response_model=TokenModel)
 async def get_refresh_token(*, user: TokenModel = Depends(check_jwt_token)):
@@ -108,9 +114,11 @@ async def get_refresh_token(*, user: TokenModel = Depends(check_jwt_token)):
     refresh_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=refresh_token_expires
     )
-    user.atoken = access_token
-    user.rtoken = refresh_token
-    return user
+    # 返回符合OAuth2规范的响应格式
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token
+    }
 
 
 @router.post("/register")
@@ -156,7 +164,7 @@ async def handle_registrations(action: str = Form(...), id: int = Form(...), db:
     return {"code": 200, "message":"OK"}
 
 @router.post("/handle_changepass")
-async def handle_changepass(newpass: str = Form(...), name: str = Form(...), user: TokenModel = Depends(check_jwt_token), db: Session = Depends(get_db)):
+async def handle_changepass(newpass: str = Form(...), name: str = Form(...), user: UserBase = Depends(check_jwt_token), db: Session = Depends(get_db)):
     useritem = db.query(Users).filter_by(id=user.id).first()
     useritem.password = get_password_hash(newpass)
     db.commit()

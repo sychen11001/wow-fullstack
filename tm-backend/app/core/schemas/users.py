@@ -11,8 +11,10 @@ class UserBase(BaseModel):
         from_attributes = True
 
 class TokenModel(UserBase):
-    atoken: str = None
-    rtoken: str = None
+    # 符合 OAuth2 规范的返回格式
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 class LoginModel(BaseModel):
     phone: str = None
